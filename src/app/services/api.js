@@ -3,34 +3,31 @@ import axios from "axios";
 function normalizeApiBaseUrl(value) {
   return String(value || "")
     .trim()
-    .replace(/\/+$/, "");
+    .replace(/\/+$/, "")
+    .replace(/\/api$/i, "");
 }
 
-const API_BASE = "https://web-production-6a1e6a.up.railway.app";
-const WORKSHOPS_API_BASE = `${API_BASE}/api/workshops`;
-
-const configuredApiBaseUrl = normalizeApiBaseUrl(
-  import.meta.env.VITE_API_BASE_URL || `${API_BASE}/api`
-);
-const apiBaseUrl = configuredApiBaseUrl || (import.meta.env.DEV ? "/api" : "");
+const API_BASE =
+  normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL) ||
+  "https://web-production-6a1e6a.up.railway.app";
+const API_ROOT = `${API_BASE}/api`;
+const WORKSHOPS_API_PATH = "/workshops";
 const USER_STORAGE_KEY = "user";
 const LEGACY_AUTH_STORAGE_KEY = "workshop-platform-auth";
 const TOKEN_STORAGE_KEY = "token";
 
 export const apiClient = axios.create({
-  baseURL: apiBaseUrl || undefined,
+  baseURL: API_ROOT,
   timeout: 10000,
   withCredentials: false,
 });
 
 function ensureApiBaseUrl() {
-  if (apiBaseUrl) {
+  if (API_BASE) {
     return;
   }
 
-  throw new Error(
-    "Missing VITE_API_BASE_URL. Set it to your deployed backend URL ending with /api."
-  );
+  throw new Error("Missing VITE_API_BASE_URL. Set it to your deployed backend URL.");
 }
 
 export function setApiAuthToken(token) {
@@ -567,7 +564,7 @@ function resolveApiUrl(url) {
   }
 
   ensureApiBaseUrl();
-  return `${apiBaseUrl}${url}`;
+  return `${API_ROOT}${String(url || "").startsWith("/") ? url : `/${url}`}`;
 }
 
 export const authFetch = async (url, options = {}) => {
@@ -808,7 +805,7 @@ export async function updateCurrentUser(payload) {
 
 export async function fetchWorkshops() {
   try {
-    const response = await axios.get(`${API_BASE}/api/workshops`);
+    const response = await apiClient.get(WORKSHOPS_API_PATH);
 
     return sortNewestFirstById(
       extractList(response.data, ["workshops"]).map((item) =>
@@ -822,7 +819,7 @@ export async function fetchWorkshops() {
 
 export async function fetchWorkshopById(workshopId) {
   try {
-    const response = await axios.get(`${API_BASE}/api/workshops/${workshopId}`);
+    const response = await apiClient.get(`${WORKSHOPS_API_PATH}/${workshopId}`);
     return normalizeWorkshop(unwrapEnvelope(response.data));
   } catch (error) {
     throw toApiError(error, "Unable to load this workshop right now.");
@@ -830,7 +827,7 @@ export async function fetchWorkshopById(workshopId) {
 }
 
 export async function createWorkshop(payload) {
-  const response = await authFetch(WORKSHOPS_API_BASE, {
+  const response = await authFetch(WORKSHOPS_API_PATH, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -843,7 +840,7 @@ export async function createWorkshop(payload) {
 }
 
 export async function updateWorkshop(workshopId, payload) {
-  const response = await authFetch(`${WORKSHOPS_API_BASE}/${workshopId}`, {
+  const response = await authFetch(`${WORKSHOPS_API_PATH}/${workshopId}`, {
     method: "PUT",
     body: JSON.stringify(payload),
   });
@@ -868,7 +865,7 @@ export async function fetchMyWorkshops() {
         { method: "get", url: `/registrations/user/${currentUserId}` },
         { method: "get", url: "/registrations/me" },
         { method: "get", url: "/users/me/workshops" },
-        { method: "get", url: `${WORKSHOPS_API_BASE}/registered` },
+        { method: "get", url: `${WORKSHOPS_API_PATH}/registered` },
       ],
       "Unable to load your workshop registrations."
     ),

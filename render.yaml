@@ -6,4 +6,4 @@ services:
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_BASE_URL
-        value: https://workshop-backend.onrender.com/api
+        value: https://web-production-6a1e6a.up.railway.app
