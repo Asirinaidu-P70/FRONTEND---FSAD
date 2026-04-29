@@ -6,8 +6,11 @@ function normalizeApiBaseUrl(value) {
     .replace(/\/+$/, "");
 }
 
+const API_BASE = "https://web-production-6a1e6a.up.railway.app";
+const WORKSHOPS_API_BASE = `${API_BASE}/api/workshops`;
+
 const configuredApiBaseUrl = normalizeApiBaseUrl(
-  import.meta.env.VITE_API_BASE_URL || "https://fsad-backend-i8ba.onrender.com/api"
+  import.meta.env.VITE_API_BASE_URL || `${API_BASE}/api`
 );
 const apiBaseUrl = configuredApiBaseUrl || (import.meta.env.DEV ? "/api" : "");
 const USER_STORAGE_KEY = "user";
@@ -558,9 +561,16 @@ async function toFetchError(response, fallbackMessage) {
   return wrapped;
 }
 
-export const authFetch = async (url, options = {}) => {
-  ensureApiBaseUrl();
+function resolveApiUrl(url) {
+  if (/^https?:\/\//i.test(String(url || ""))) {
+    return url;
+  }
 
+  ensureApiBaseUrl();
+  return `${apiBaseUrl}${url}`;
+}
+
+export const authFetch = async (url, options = {}) => {
   const token = readStoredAuthToken();
   const headers = {
     "Content-Type": "application/json",
@@ -571,7 +581,7 @@ export const authFetch = async (url, options = {}) => {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  return fetch(`${apiBaseUrl}${url}`, {
+  return fetch(resolveApiUrl(url), {
     ...options,
     headers,
   });
@@ -797,29 +807,30 @@ export async function updateCurrentUser(payload) {
 }
 
 export async function fetchWorkshops() {
-  const response = await requestFirst(
-    [{ method: "get", url: "/workshops" }],
-    "Unable to load workshops right now."
-  );
+  try {
+    const response = await axios.get(`${API_BASE}/api/workshops`);
 
-  return sortNewestFirstById(
-    extractList(response.data, ["workshops"]).map((item) =>
-      normalizeWorkshop(item)
-    )
-  );
+    return sortNewestFirstById(
+      extractList(response.data, ["workshops"]).map((item) =>
+        normalizeWorkshop(item)
+      )
+    );
+  } catch (error) {
+    throw toApiError(error, "Unable to load workshops right now.");
+  }
 }
 
 export async function fetchWorkshopById(workshopId) {
-  const response = await requestFirst(
-    [{ method: "get", url: `/workshops/${workshopId}` }],
-    "Unable to load this workshop right now."
-  );
-
-  return normalizeWorkshop(response.data);
+  try {
+    const response = await axios.get(`${API_BASE}/api/workshops/${workshopId}`);
+    return normalizeWorkshop(unwrapEnvelope(response.data));
+  } catch (error) {
+    throw toApiError(error, "Unable to load this workshop right now.");
+  }
 }
 
 export async function createWorkshop(payload) {
-  const response = await authFetch("/workshops", {
+  const response = await authFetch(WORKSHOPS_API_BASE, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -832,7 +843,7 @@ export async function createWorkshop(payload) {
 }
 
 export async function updateWorkshop(workshopId, payload) {
-  const response = await authFetch(`/workshops/${workshopId}`, {
+  const response = await authFetch(`${WORKSHOPS_API_BASE}/${workshopId}`, {
     method: "PUT",
     body: JSON.stringify(payload),
   });
@@ -857,20 +868,15 @@ export async function fetchMyWorkshops() {
         { method: "get", url: `/registrations/user/${currentUserId}` },
         { method: "get", url: "/registrations/me" },
         { method: "get", url: "/users/me/workshops" },
-        { method: "get", url: "/workshops/registered" },
+        { method: "get", url: `${WORKSHOPS_API_BASE}/registered` },
       ],
       "Unable to load your workshop registrations."
     ),
-    requestFirst(
-      [{ method: "get", url: "/workshops" }],
-      "Unable to load your workshop registrations."
-    ),
+    fetchWorkshops(),
   ]);
 
   const workshopMap = new Map(
-    extractList(workshopsResponse.data, ["workshops"])
-      .map((item) => normalizeWorkshop(item))
-      .map((item) => [String(item.id), item])
+    workshopsResponse.map((item) => [String(item.id), item])
   );
 
   const registrations = extractList(registrationsResponse.data, ["registrations", "workshops"]);
